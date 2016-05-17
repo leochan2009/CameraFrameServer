@@ -36,32 +36,6 @@ typedef struct {
 std::string     videoFile = "";
 
 void CalculateFrameRate(cv::VideoCapture cap);
-/*
-int main()
-{
-  cv::VideoCapture cap;
-  cap.open(0);
-  if( !cap.isOpened() )
-  {
-    std::cerr << "***Could not initialize capturing...***\n";
-    std::cerr << "Current parameter's value: \n";
-    return -1;
-  }
-  
-  cv::Mat frame;
-  while(1){
-    cap >> frame;
-    if(frame.empty()){
-      std::cerr<<"frame is empty"<<std::endl;
-      break;
-    }
-    
-    cv::imshow("", frame);
-    cv::waitKey(10);
-  }
-  
-  return 1;
-}*/
 
 int main(int argc, char* argv[])
 {
@@ -93,7 +67,7 @@ int main(int argc, char* argv[])
   cv::VideoCapture cap;
   cap.open(0);
   CalculateFrameRate(cap);
-  
+  cap.release();
   while(1){
     //------------------------------------------------------------
     // Waiting for Connection
@@ -152,6 +126,10 @@ int main(int argc, char* argv[])
           int c = startVideoMsg->Unpack(1);
           if (c & igtl::MessageHeader::UNPACK_BODY) // if CRC check is OK
           {
+            if (!cap.isOpened())
+            {
+              cap.open(0);
+            }
             td.interval = startVideoMsg->GetResolution();
             td.glock    = glock;
             td.socket   = socket;
@@ -170,6 +148,7 @@ int main(int argc, char* argv[])
             threader->TerminateThread(threadID);
             threadID = -1;
             std::cerr << "Disconnecting the client." << std::endl;
+            cap.release();
             td.socket = NULL;  // VERY IMPORTANT. Completely remove the instance.
             socket->CloseSocket();
           }
@@ -359,24 +338,18 @@ void* ThreadFunction(void* ptr)
     
     if (td->cap.isOpened())
     {
-      int w = td->cap.get(CV_CAP_PROP_FRAME_WIDTH);
-      int h = td->cap.get(CV_CAP_PROP_FRAME_HEIGHT);
-      int bufLen = w*h*3/2;
-      cv::Mat frame;
       while (!td->stop)
       {
+        cv::Mat frame;
         td->cap >> frame;
         if(frame.empty()){
           std::cerr<<"frame is empty"<<std::endl;
           break;
         }
-        cv::imshow("", frame);
+        //cv::imshow("", frame);
         cv::waitKey(10);
         cv::Mat yuvImg;
         cv::cvtColor(frame, yuvImg, CV_BGR2YUV_I420);
-        
-        int frameSize = pEncParamExt.iPicWidth * pEncParamExt.iPicHeight * 3 / 2;
-        
         
         SFrameBSInfo info;
         memset (&info, 0, sizeof (SFrameBSInfo));
@@ -384,8 +357,6 @@ void* ThreadFunction(void* ptr)
         memset (&pic, 0, sizeof (SSourcePicture));
         SHA1Context ctx;
         memset (&ctx, 0, sizeof(SHA1Context));
-        FILE* pFpBs = NULL;
-        pFpBs = fopen ("encodedOutput", "wb");
         pic.iPicWidth    = pEncParamExt.iPicWidth;
         pic.iPicHeight   = pEncParamExt.iPicHeight;
         pic.iColorFormat = videoFormatI420;
@@ -397,13 +368,11 @@ void* ThreadFunction(void* ptr)
         int iFrameIdx =0;
         pic.uiTimeStamp = (long long)(iFrameIdx * (1000 / pEncParamExt.fMaxFrameRate));
         iFrameIdx++;
-        //TestDebugCharArrayCmp(pic.pData[0], pic.pData[0], 200);
         int rv = encoder_->EncodeFrame (&pic, &info);
-        //TestDebugCharArrayCmp(info.sLayerInfo[0].pBsBuf, info.sLayerInfo[0].pBsBuf, 200);
         if(rv == cmResultSuccess)
         {
           // 1. contain SHA encryption, could be removed, 2. contain the digest message could be as CRC
-          UpdateHashFromFrame (info, &ctx);
+          //UpdateHashFromFrame (info, &ctx);
           //---------------
           igtl::VideoMessage::Pointer videoMsg;
           videoMsg = igtl::VideoMessage::New();
@@ -429,10 +398,7 @@ void* ThreadFunction(void* ptr)
             {
               videoMsg->GetPackFragmentPointer(2)[frameSize-layerSize+i] = layerInfo.pBsBuf[i];
             }
-            fwrite (layerInfo.pBsBuf, 1, layerSize, pFpBs); // write pure bit stream into file
           }
-          //std::cerr<<"line break"<<std::endl;
-          //TestDebugCharArrayCmp(videoMsg->GetPackFragmentPointer(2), videoMsg->GetPackFragmentPointer(1) + IGTL_VIDEO_HEADER_SIZE, 200);
           videoMsg->Pack();
           glock->Lock();
           
@@ -443,9 +409,9 @@ void* ThreadFunction(void* ptr)
           glock->Unlock();
           igtl::Sleep(interval);
         }
-        unsigned char digest[SHA_DIGEST_LENGTH];
-        SHA1Result(&ctx, digest);
-        CompareHash (digest, kFileParamArray.pkcHashStr);
+        //unsigned char digest[SHA_DIGEST_LENGTH];
+        //SHA1Result(&ctx, digest);
+        //CompareHash (digest, kFileParamArray.pkcHashStr);
         //------------------------------------------------------------
         // Loop
       }
