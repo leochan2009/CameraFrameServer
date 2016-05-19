@@ -31,6 +31,7 @@ typedef struct {
   igtl::Socket::Pointer socket;
   int   interval;
   int   stop;
+  bool  useCompression;
 } ThreadData;
 
 std::string     videoFile = "";
@@ -135,6 +136,7 @@ int main(int argc, char* argv[])
             td.socket   = socket;
             td.stop     = 0;
             td.cap = cap;
+            td.useCompression = startVideoMsg->GetUseCompress();
             threadID    = threader->SpawnThread((igtl::ThreadFunctionType) &ThreadFunction, &td);
           }
         }
@@ -346,62 +348,24 @@ void* ThreadFunction(void* ptr)
           std::cerr<<"frame is empty"<<std::endl;
           break;
         }
-        //cv::imshow("", frame);
+        cv::imshow("", frame);
         cv::waitKey(10);
         cv::Mat yuvImg;
         cv::cvtColor(frame, yuvImg, CV_BGR2YUV_I420);
-        
-        SFrameBSInfo info;
-        memset (&info, 0, sizeof (SFrameBSInfo));
-        SSourcePicture pic;
-        memset (&pic, 0, sizeof (SSourcePicture));
-        SHA1Context ctx;
-        memset (&ctx, 0, sizeof(SHA1Context));
-        pic.iPicWidth    = pEncParamExt.iPicWidth;
-        pic.iPicHeight   = pEncParamExt.iPicHeight;
-        pic.iColorFormat = videoFormatI420;
-        pic.iStride[0]   = pic.iPicWidth;
-        pic.iStride[1]   = pic.iStride[2] = pic.iPicWidth >> 1;
-        pic.pData[0]     = yuvImg.data;
-        pic.pData[1]     = pic.pData[0] + pEncParamExt.iPicWidth * pEncParamExt.iPicHeight;
-        pic.pData[2]     = pic.pData[1] + (pEncParamExt.iPicWidth * pEncParamExt.iPicHeight >> 2);
-        int iFrameIdx =0;
-        pic.uiTimeStamp = (long long)(iFrameIdx * (1000 / pEncParamExt.fMaxFrameRate));
-        iFrameIdx++;
-        int rv = encoder_->EncodeFrame (&pic, &info);
-        if(rv == cmResultSuccess)
+        if (!td->useCompression)
         {
-          // 1. contain SHA encryption, could be removed, 2. contain the digest message could be as CRC
-          //UpdateHashFromFrame (info, &ctx);
-          //---------------
           igtl::VideoMessage::Pointer videoMsg;
           videoMsg = igtl::VideoMessage::New();
           videoMsg->SetDeviceName("Video");
-          videoMsg->SetBitStreamSize(info.iFrameSizeInBytes);
+          videoMsg->SetBitStreamSize(pEncParamExt.iPicWidth*pEncParamExt.iPicHeight*3/2);
           videoMsg->AllocateScalars();
           videoMsg->SetScalarType(videoMsg->TYPE_UINT32);
           videoMsg->SetEndian(igtl_is_little_endian()==true?2:1); //little endian is 2 big endian is 1
-          videoMsg->SetWidth(pic.iPicWidth);
-          videoMsg->SetHeight(pic.iPicHeight);
-          int frameSize = 0;
-          int layerSize = 0;
-          for (int i = 0; i < info.iLayerNum; ++i) {
-            const SLayerBSInfo& layerInfo = info.sLayerInfo[i];
-            layerSize = 0;
-            for (int j = 0; j < layerInfo.iNalCount; ++j)
-            {
-              frameSize += layerInfo.pNalLengthInByte[j];
-              layerSize += layerInfo.pNalLengthInByte[j];
-            }
-            //TestDebugCharArrayCmp(layerInfo.pBsBuf, layerInfo.pBsBuf, layerSize<200? layerSize:200);
-            for (int i = 0; i < layerSize ; i++)
-            {
-              videoMsg->GetPackFragmentPointer(2)[frameSize-layerSize+i] = layerInfo.pBsBuf[i];
-            }
-          }
+          videoMsg->SetWidth(pEncParamExt.iPicWidth);
+          videoMsg->SetHeight(pEncParamExt.iPicHeight);
+          memcpy(videoMsg->GetPackFragmentPointer(2), yuvImg.data, pEncParamExt.iPicWidth*pEncParamExt.iPicHeight*3/2);
           videoMsg->Pack();
           glock->Lock();
-          
           for (int i = 0; i < videoMsg->GetNumberOfPackFragments(); i ++)
           {
             socket->Send(videoMsg->GetPackFragmentPointer(i), videoMsg->GetPackFragmentSize(i));
@@ -409,11 +373,66 @@ void* ThreadFunction(void* ptr)
           glock->Unlock();
           igtl::Sleep(interval);
         }
-        //unsigned char digest[SHA_DIGEST_LENGTH];
-        //SHA1Result(&ctx, digest);
-        //CompareHash (digest, kFileParamArray.pkcHashStr);
-        //------------------------------------------------------------
-        // Loop
+        else{
+          SFrameBSInfo info;
+          memset (&info, 0, sizeof (SFrameBSInfo));
+          SSourcePicture pic;
+          memset (&pic, 0, sizeof (SSourcePicture));
+          SHA1Context ctx;
+          memset (&ctx, 0, sizeof(SHA1Context));
+          pic.iPicWidth    = pEncParamExt.iPicWidth;
+          pic.iPicHeight   = pEncParamExt.iPicHeight;
+          pic.iColorFormat = videoFormatI420;
+          pic.iStride[0]   = pic.iPicWidth;
+          pic.iStride[1]   = pic.iStride[2] = pic.iPicWidth >> 1;
+          pic.pData[0]     = yuvImg.data;
+          pic.pData[1]     = pic.pData[0] + pic.iPicWidth * pic.iPicHeight;
+          pic.pData[2]     = pic.pData[1] + (pic.iPicWidth * pic.iPicHeight >> 2);
+          int iFrameIdx =0;
+          pic.uiTimeStamp = (long long)(iFrameIdx * (1000 / pEncParamExt.fMaxFrameRate));
+          iFrameIdx++;
+          int rv = encoder_->EncodeFrame (&pic, &info);
+          if(rv == cmResultSuccess)
+          {
+            // 1. contain SHA encryption, could be removed, 2. contain the digest message could be as CRC
+            //UpdateHashFromFrame (info, &ctx);
+            //---------------
+            igtl::VideoMessage::Pointer videoMsg;
+            videoMsg = igtl::VideoMessage::New();
+            videoMsg->SetDeviceName("Video");
+            videoMsg->SetBitStreamSize(info.iFrameSizeInBytes);
+            videoMsg->AllocateScalars();
+            videoMsg->SetScalarType(videoMsg->TYPE_UINT32);
+            videoMsg->SetEndian(igtl_is_little_endian()==true?2:1); //little endian is 2 big endian is 1
+            videoMsg->SetWidth(pic.iPicWidth);
+            videoMsg->SetHeight(pic.iPicHeight);
+            int frameSize = 0;
+            int layerSize = 0;
+            for (int i = 0; i < info.iLayerNum; ++i) {
+              const SLayerBSInfo& layerInfo = info.sLayerInfo[i];
+              layerSize = 0;
+              for (int j = 0; j < layerInfo.iNalCount; ++j)
+              {
+                frameSize += layerInfo.pNalLengthInByte[j];
+                layerSize += layerInfo.pNalLengthInByte[j];
+              }
+              //TestDebugCharArrayCmp(layerInfo.pBsBuf, layerInfo.pBsBuf, layerSize<200? layerSize:200);
+              for (int i = 0; i < layerSize ; i++)
+              {
+                videoMsg->GetPackFragmentPointer(2)[frameSize-layerSize+i] = layerInfo.pBsBuf[i];
+              }
+            }
+            videoMsg->Pack();
+            glock->Lock();
+            
+            for (int i = 0; i < videoMsg->GetNumberOfPackFragments(); i ++)
+            {
+              socket->Send(videoMsg->GetPackFragmentPointer(i), videoMsg->GetPackFragmentSize(i));
+            }
+            glock->Unlock();
+            igtl::Sleep(interval);
+          }
+        }
       }
     }
   }
