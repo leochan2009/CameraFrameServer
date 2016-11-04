@@ -13,8 +13,8 @@ include_directories("${OpenH264_INCLUDE}/res")
 include_directories("${OpenH264_INCLUDE}/test")
 LINK_DIRECTORIES("${OpenH264_LIB}")
 
-set(OpenIGTLink_INCLUDE "${PARENT_DIR}/OpenIGTLink/Source" CACHE STRING "OpenIGTLink source file")
-set(OpenIGTLink_LIB "${PARENT_DIR}/OpenIGTLink-XcodeBuild" CACHE STRING "OpenIGTLink library")
+set(OpenIGTLink_INCLUDE "${PARENT_DIR}/Slicer-build/OpenIGTLink/Source" CACHE STRING "OpenIGTLink source file")
+set(OpenIGTLink_LIB "${PARENT_DIR}/Slicer-build/OpenIGTLink-build" CACHE STRING "OpenIGTLink library")
 
 include_directories("${OpenCV_INCLUDE_DIRS}")
 include_directories("${OpenIGTLink_INCLUDE}")
@@ -23,5 +23,11 @@ include_directories("${OpenIGTLink_LIB}")
 LINK_DIRECTORIES("${OpenIGTLink_LIB}/bin")
 
 
+find_package(VideoStreamOpenIGTLink REQUIRED)
+include(${VideoStreamOpenIGTLink_USE_FILE})
+
 add_executable( CameraFrameServer CameraFrameServer.cpp )
-target_link_libraries( CameraFrameServer ${OpenCV_LIBS} OpenIGTLink openH264)
+target_link_libraries( CameraFrameServer ${OpenCV_LIBS} OpenIGTLink ${VideoStreamOpenIGTLink_LIBRARIES})
+
+#add_executable( CameraFrameServer2 CameraFrameServer2.cpp )
+#target_link_libraries( CameraFrameServer2 ${VideoStreamOpenIGTLink_LIBRARIES})
