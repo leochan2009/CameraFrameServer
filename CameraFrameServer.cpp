@@ -52,7 +52,7 @@ int main(int argc, char* argv[])
     exit(0);
   }
   
-  int    port     = atoi(argv[1]);
+  int    port     = 18944;
   cv::VideoCapture cap;
   cap.open(0);
   //CalculateFrameRate(cap);
@@ -61,34 +61,42 @@ int main(int argc, char* argv[])
   {
     cap.open(0);
   }
+  cv::Mat frame;
+  cap >> frame;
   cv::Mat yuvImg;
-  char *configFile[]={"","/Users/longquanchen/Desktop/Github/VideoStreamingOpenIGTLink/xcodeBuild/VideoStreamServer/Debug/welsenc.cfg"};
+  cv::cvtColor(frame, yuvImg, CV_BGR2YUV_I420); // initialize the yuvImg.data, otherwize will be null
+  char *configFile[]={"",argv[1]};
   VideoStreamIGTLinkServer* VideoStreamServer = new VideoStreamIGTLinkServer(2,configFile);
   VideoStreamServer->bConfigFile = true;
-  VideoStreamServer->StartServer(port);
   VideoStreamServer->InitializeEncoder();
   VideoStreamServer->SetInputFramePointer(yuvImg.data);
+  VideoStreamServer->StartServer(port);
   while(1)
   {
-    cv::Mat frame;
-    cap >> frame;
-    if(frame.empty()){
-      std::cerr<<"frame is empty"<<std::endl;
-      break;
-    }
-    else
+    if(!VideoStreamServer->stop)
     {
-      cv::imshow("", frame);
-      cv::waitKey(10);
-      cv::cvtColor(frame, yuvImg, CV_BGR2YUV_I420);
-      
-      int iEncFrames = VideoStreamServer->encodeSingleFrame();
-      if (iEncFrames = cmResultSuccess)
-      {
-        VideoStreamServer->SendIGTLinkMessage();
+      cap >> frame;
+      if(frame.empty()){
+        std::cerr<<"frame is empty"<<std::endl;
+        break;
       }
-      int iFrameIdx =0;
-      iFrameIdx++;
+      else
+      {
+        cv::imshow("", frame);
+        cv::waitKey(10);
+        cv::cvtColor(frame, yuvImg, CV_BGR2YUV_I420);
+        if (!VideoStreamServer->InitializationDone)
+        {
+          VideoStreamServer->InitializeEncoder();
+        }
+        int iEncFrames = VideoStreamServer->encodeSingleFrame();
+        if (iEncFrames == cmResultSuccess)
+        {
+          VideoStreamServer->SendIGTLinkMessage();
+        }
+        int iFrameIdx =0;
+        iFrameIdx++;
+      }
     }
   }
   VideoStreamServer->~VideoStreamIGTLinkServer();
