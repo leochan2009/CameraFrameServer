@@ -69,6 +69,7 @@ int main(int argc, char* argv[])
   VideoStreamIGTLinkServer* VideoStreamServer = new VideoStreamIGTLinkServer(2,configFile);
   VideoStreamServer->bConfigFile = true;
   VideoStreamServer->InitializeEncoder();
+  VideoStreamServer->waitSTTCommand = false;
   VideoStreamServer->SetInputFramePointer(yuvImg.data);
   VideoStreamServer->StartServer(port);
   while(1)
