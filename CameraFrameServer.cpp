@@ -4,36 +4,7 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/video/tracking.hpp>
 
-#include "api/svc/codec_api.h"
-#include "api/svc/codec_def.h"
-#include "api/svc/codec_app_def.h"
-#include "utils/BufferedData.h"
-#include "utils/FileInputStream.h"
-#include "api/sha1.c"
-#include "igtl_header.h"
-#include "igtl_video.h"
-
-
-#include "igtlOSUtil.h"
-#include "igtlMessageHeader.h"
-#include "igtlVideoMessage.h"
-#include "igtlServerSocket.h"
-#include "igtlMultiThreader.h"
 #include "VideoStreamIGTLinkServer.h"
-
-
-void* ThreadFunction(void* ptr);
-int   SendVideoData(igtl::Socket::Pointer& socket, igtl::VideoMessage::Pointer& videoMsg);
-
-typedef struct {
-  cv::VideoCapture cap;
-  int   nloop;
-  igtl::MutexLock::Pointer glock;
-  igtl::Socket::Pointer socket;
-  int   interval;
-  int   stop;
-  bool  useCompression;
-} ThreadData;
 
 std::string     videoFile = "";
 
@@ -51,8 +22,6 @@ int main(int argc, char* argv[])
     std::cerr << "    <port>     : Port # (18944 in Slicer default)"   << std::endl;
     exit(0);
   }
-  
-  int    port     = 18944;
   cv::VideoCapture cap;
   cap.open(0);
   //CalculateFrameRate(cap);
@@ -65,40 +34,47 @@ int main(int argc, char* argv[])
   cap >> frame;
   cv::Mat yuvImg;
   cv::cvtColor(frame, yuvImg, CV_BGR2YUV_I420); // initialize the yuvImg.data, otherwize will be null
-  char *configFile[]={"",argv[1]};
-  VideoStreamIGTLinkServer* VideoStreamServer = new VideoStreamIGTLinkServer(2,configFile);
-  VideoStreamServer->bConfigFile = true;
-  VideoStreamServer->InitializeEncoder();
-  VideoStreamServer->waitSTTCommand = false;
-  VideoStreamServer->SetInputFramePointer(yuvImg.data);
-  VideoStreamServer->StartServer(port);
-  while(1)
+  char *configFile[]={(char *)"",argv[1]};
+  VideoStreamIGTLinkServer* VideoStreamServer = new VideoStreamIGTLinkServer(2, configFile);
+  VideoStreamServer->InitializeEncoderAndServer();
+  if(VideoStreamServer->GetInitializationStatus())
   {
-    if(!VideoStreamServer->stop)
+    VideoStreamServer->SetWaitSTTCommand(false);
+    VideoStreamServer->SetInputFramePointer(yuvImg.data);
+    VideoStreamServer->StartServer();
+    while(1)
     {
-      cap >> frame;
-      if(frame.empty()){
-        std::cerr<<"frame is empty"<<std::endl;
-        break;
-      }
-      else
+      if(VideoStreamServer->GetServerConnectStatus())
       {
-        cv::imshow("", frame);
-        cv::waitKey(10);
-        cv::cvtColor(frame, yuvImg, CV_BGR2YUV_I420);
-        if (!VideoStreamServer->InitializationDone)
-        {
-          VideoStreamServer->InitializeEncoder();
+        cap >> frame;
+        if(frame.empty()){
+          std::cerr<<"frame is empty"<<std::endl;
+          break;
         }
-        int iEncFrames = VideoStreamServer->encodeSingleFrame();
-        if (iEncFrames == cmResultSuccess)
+        else
         {
-          VideoStreamServer->SendIGTLinkMessage();
+          cv::imshow("", frame);
+          cv::waitKey(10);
+          cv::cvtColor(frame, yuvImg, CV_BGR2YUV_I420);
+          if (!VideoStreamServer->GetInitializationStatus())
+          {
+            VideoStreamServer->InitializeEncoderAndServer();
+          }
+          int iEncFrames = VideoStreamServer->EncodeSingleFrame();
+          if (iEncFrames == cmResultSuccess)
+          {
+            int frameType = VideoStreamServer->GetVideoFrameType();
+            VideoStreamServer->SendIGTLinkMessage();
+          }
+          int iFrameIdx =0;
+          iFrameIdx++;
         }
-        int iFrameIdx =0;
-        iFrameIdx++;
       }
     }
+  }
+  else
+  {
+    std::cerr<<"Initialization of encoder or server failed!"<<std::endl;
   }
   VideoStreamServer->~VideoStreamIGTLinkServer();
   return 1;
