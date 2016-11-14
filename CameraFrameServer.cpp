@@ -39,6 +39,7 @@ int main(int argc, char* argv[])
   VideoStreamServer->InitializeEncoderAndServer();
   if(VideoStreamServer->GetInitializationStatus())
   {
+    std::string deviceNameConfig = VideoStreamServer->deviceName;
     VideoStreamServer->SetWaitSTTCommand(false);
     VideoStreamServer->SetInputFramePointer(yuvImg.data);
     VideoStreamServer->StartServer();
@@ -59,11 +60,24 @@ int main(int argc, char* argv[])
           if (!VideoStreamServer->GetInitializationStatus())
           {
             VideoStreamServer->InitializeEncoderAndServer();
+            deviceNameConfig = VideoStreamServer->deviceName;
           }
           int iEncFrames = VideoStreamServer->EncodeSingleFrame();
           if (iEncFrames == cmResultSuccess)
           {
             int frameType = VideoStreamServer->GetVideoFrameType();
+            if (frameType == videoFrameTypeIDR)
+            {
+              VideoStreamServer->deviceName = deviceNameConfig + "IDRFrame";
+            }
+            if (frameType == videoFrameTypeI)
+            {
+              VideoStreamServer->deviceName = deviceNameConfig + "IFrame";
+            }
+            if (frameType == videoFrameTypeP)
+            {
+              VideoStreamServer->deviceName = deviceNameConfig + "PFrame";
+            }
             VideoStreamServer->SendIGTLinkMessage();
           }
           int iFrameIdx =0;
