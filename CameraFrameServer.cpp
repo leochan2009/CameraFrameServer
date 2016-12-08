@@ -45,12 +45,7 @@ int main(int argc, char* argv[])
     VideoStreamServer->useCompress = 1;
     VideoStreamServer->StartServer();
     while(1)
-    {
-      if(VideoStreamServer->transportMethod == 0 && VideoStreamServer->GetServerConnectStatus())
-      {
-        continue;
-      }
-        
+    {        
       cap >> frame;
       if(frame.empty()){
         std::cerr<<"frame is empty"<<std::endl;
