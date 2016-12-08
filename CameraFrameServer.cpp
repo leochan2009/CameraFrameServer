@@ -35,54 +35,45 @@ int main(int argc, char* argv[])
   cv::Mat yuvImg;
   cv::cvtColor(frame, yuvImg, CV_BGR2YUV_I420); // initialize the yuvImg.data, otherwize will be null
   char *configFile[]={(char *)"",argv[1]};
-  VideoStreamIGTLinkServer* VideoStreamServer = new VideoStreamIGTLinkServer(2, configFile);
+  VideoStreamIGTLinkServer* VideoStreamServer = new VideoStreamIGTLinkServer(configFile);
   VideoStreamServer->InitializeEncoderAndServer();
   if(VideoStreamServer->GetInitializationStatus())
   {
     std::string deviceNameConfig = VideoStreamServer->deviceName;
     VideoStreamServer->SetWaitSTTCommand(false);
     VideoStreamServer->SetInputFramePointer(yuvImg.data);
+    VideoStreamServer->useCompress = 1;
     VideoStreamServer->StartServer();
     while(1)
     {
-      if(VideoStreamServer->GetServerConnectStatus())
+      if(VideoStreamServer->transportMethod == 0 && VideoStreamServer->GetServerConnectStatus())
       {
-        cap >> frame;
-        if(frame.empty()){
-          std::cerr<<"frame is empty"<<std::endl;
-          break;
-        }
-        else
+        continue;
+      }
+        
+      cap >> frame;
+      if(frame.empty()){
+        std::cerr<<"frame is empty"<<std::endl;
+        break;
+      }
+      else
+      {
+        cv::imshow("", frame);
+        cv::waitKey(10);
+        cv::cvtColor(frame, yuvImg, CV_BGR2YUV_I420);
+        if (!VideoStreamServer->GetInitializationStatus())
         {
-          cv::imshow("", frame);
-          cv::waitKey(10);
-          cv::cvtColor(frame, yuvImg, CV_BGR2YUV_I420);
-          if (!VideoStreamServer->GetInitializationStatus())
-          {
-            VideoStreamServer->InitializeEncoderAndServer();
-            deviceNameConfig = VideoStreamServer->deviceName;
-          }
-          int iEncFrames = VideoStreamServer->EncodeSingleFrame();
-          if (iEncFrames == cmResultSuccess)
-          {
-            int frameType = VideoStreamServer->GetVideoFrameType();
-            if (frameType == videoFrameTypeIDR)
-            {
-              VideoStreamServer->deviceName = deviceNameConfig + "IDRFrame";
-            }
-            if (frameType == videoFrameTypeI)
-            {
-              VideoStreamServer->deviceName = deviceNameConfig + "IFrame";
-            }
-            if (frameType == videoFrameTypeP)
-            {
-              VideoStreamServer->deviceName = deviceNameConfig + "PFrame";
-            }
-            VideoStreamServer->SendIGTLinkMessage();
-          }
-          int iFrameIdx =0;
-          iFrameIdx++;
+          VideoStreamServer->InitializeEncoderAndServer();
+          deviceNameConfig = VideoStreamServer->deviceName;
         }
+        int iEncFrames = VideoStreamServer->EncodeSingleFrame();
+        if (iEncFrames == cmResultSuccess)
+        {
+          //int frameType = VideoStreamServer->GetVideoFrameType();
+          VideoStreamServer->SendIGTLinkMessage();
+        }
+        int iFrameIdx =0;
+        iFrameIdx++;
       }
     }
   }
