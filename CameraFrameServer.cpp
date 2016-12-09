@@ -70,7 +70,7 @@ int main(int argc, char* argv[])
         if (iEncFrames == cmResultSuccess)
         {
           //int frameType = VideoStreamServer->GetVideoFrameType();
-          VideoStreamServer->SendIGTLinkMessage();
+          VideoStreamServer->SendCompressedData();
         }
         int iFrameIdx =0;
         iFrameIdx++;
