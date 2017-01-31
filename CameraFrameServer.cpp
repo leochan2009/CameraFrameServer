@@ -41,9 +41,8 @@ int main(int argc, char* argv[])
   {
     std::string deviceNameConfig = VideoStreamServer->deviceName;
     VideoStreamServer->SetWaitSTTCommand(false);
-    VideoStreamServer->SetInputFramePointer(yuvImg.data);
-    VideoStreamServer->useCompress = 1;
-    VideoStreamServer->StartServer();
+    VideoStreamServer->StartTCPServer();
+    VideoStreamServer->StartSendPacketThread();
     while(1)
     {        
       cap >> frame;
@@ -61,8 +60,8 @@ int main(int argc, char* argv[])
           VideoStreamServer->InitializeEncoderAndServer();
           deviceNameConfig = VideoStreamServer->deviceName;
         }
-        int iEncFrames = VideoStreamServer->EncodeSingleFrame();
-        if (iEncFrames == cmResultSuccess)
+        int iEncFrames = VideoStreamServer->EncodeSingleFrame(yuvImg.data);
+        if (iEncFrames == 0)
         {
           //int frameType = VideoStreamServer->GetVideoFrameType();
           VideoStreamServer->SendCompressedData();
