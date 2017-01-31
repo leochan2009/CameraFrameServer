@@ -4,8 +4,10 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/video/tracking.hpp>
 
-#include "VideoStreamIGTLinkServer.h"
-
+#include "igtlOSUtil.h"
+#include "igtl_util.h"
+#include "igtlImageMessage.h"
+#include "igtlServerSocket.h"
 std::string     videoFile = "";
 
 void CalculateFrameRate(cv::VideoCapture cap);
@@ -30,52 +32,86 @@ int main(int argc, char* argv[])
   {
     cap.open(0);
   }
-  cv::Mat frame;
-  cap >> frame;
-  cv::Mat yuvImg;
-  cv::cvtColor(frame, yuvImg, CV_BGR2YUV_I420); // initialize the yuvImg.data, otherwize will be null
-  char *configFile[]={(char *)"",argv[1]};
-  VideoStreamIGTLinkServer* VideoStreamServer = new VideoStreamIGTLinkServer(configFile);
-  VideoStreamServer->InitializeEncoderAndServer();
-  if(VideoStreamServer->GetInitializationStatus())
+  //------------------------------------------------------------
+  // Prepare server socket
+  igtl::ServerSocket::Pointer serverSocket;
+  serverSocket = igtl::ServerSocket::New();
+  int r = serverSocket->CreateServer(18944);
+  
+  if (r < 0)
   {
-    std::string deviceNameConfig = VideoStreamServer->deviceName;
-    VideoStreamServer->SetWaitSTTCommand(false);
-    VideoStreamServer->StartTCPServer();
-    VideoStreamServer->StartSendPacketThread();
-    while(1)
-    {        
-      cap >> frame;
-      if(frame.empty()){
-        std::cerr<<"frame is empty"<<std::endl;
-        break;
-      }
-      else
+    std::cerr << "Cannot create a server socket." << std::endl;
+    exit(0);
+  }
+  
+  
+  igtl::Socket::Pointer socket;
+  
+  while (1)
+  {
+    //------------------------------------------------------------
+    // Waiting for Connection
+    socket = serverSocket->WaitForConnection(1000);
+    
+    if (socket.IsNotNull()) // if client connected
+    {
+      //------------------------------------------------------------
+      // loop
+      for (int i = 0; i < 100; i ++)
       {
-        cv::imshow("", frame);
-        cv::waitKey(10);
-        cv::cvtColor(frame, yuvImg, CV_BGR2YUV_I420);
-        if (!VideoStreamServer->GetInitializationStatus())
+        cv::Mat frame;
+        cap >> frame;
+        cv::Mat yuvImg;
+        cv::cvtColor(frame, yuvImg, CV_BGR2RGB); // initialize the yuvImg.data, otherwize will be null
+        //------------------------------------------------------------
+        // size parameters
+        int   size[]     = {frame.cols, frame.rows, 1};       // image dimension
+        float spacing[]  = {1.0, 1.0, 1.0};     // spacing (mm/pixel)
+        int   svsize[]   = {frame.rows, frame.cols, 1};       // sub-volume size
+        int   svoffset[] = {0, 0, 0};           // sub-volume offset
+        int   scalarType = igtl::ImageMessage::TYPE_UINT8;// scalar type
+        
+        //------------------------------------------------------------
+        // Create a new IMAGE type message
+        int endian = igtl::ImageMessage::ENDIAN_BIG;
+        if (igtl_is_little_endian())
         {
-          VideoStreamServer->InitializeEncoderAndServer();
-          deviceNameConfig = VideoStreamServer->deviceName;
+          endian = igtl::ImageMessage::ENDIAN_LITTLE;
         }
-        int iEncFrames = VideoStreamServer->EncodeSingleFrame(yuvImg.data);
-        if (iEncFrames == 0)
-        {
-          //int frameType = VideoStreamServer->GetVideoFrameType();
-          VideoStreamServer->SendCompressedData();
-        }
-        int iFrameIdx =0;
-        iFrameIdx++;
+        igtl::ImageMessage::Pointer imgMsg = igtl::ImageMessage::New();
+        imgMsg->SetNumComponents(3);
+        imgMsg->SetDimensions(size);
+        imgMsg->SetSpacing(spacing);
+        imgMsg->SetEndian(endian);
+        imgMsg->SetScalarType(scalarType);
+        imgMsg->SetDeviceName("ImagerClient");
+        imgMsg->SetSubVolume(svsize, svoffset);
+        imgMsg->AllocateScalars();
+        
+        //------------------------------------------------------------
+        // Set image data (See GetTestImage() bellow for the details)
+        memcpy(imgMsg->GetScalarPointer(),yuvImg.data, imgMsg->GetImageSize());
+        
+        //------------------------------------------------------------
+        // Get randome orientation matrix and set it.
+        igtl::Matrix4x4 matrix;
+        igtl::IdentityMatrix(matrix);
+        imgMsg->SetMatrix(matrix);
+        
+        //------------------------------------------------------------
+        // Pack (serialize) and send
+        imgMsg->Pack();
+        socket->Send(imgMsg->GetPackPointer(), imgMsg->GetPackSize());
+        
+        igtl::Sleep(200); // wait
       }
     }
   }
-  else
-  {
-    std::cerr<<"Initialization of encoder or server failed!"<<std::endl;
-  }
-  VideoStreamServer->~VideoStreamIGTLinkServer();
+  
+  //------------------------------------------------------------
+  // Close connection (The example code never reachs to this section ...)
+  
+  socket->CloseSocket();
   return 1;
 }
 
