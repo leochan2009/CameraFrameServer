@@ -27,12 +27,14 @@ static int encode_frame(vpx_codec_ctx_t *codec, vpx_image_t *img,
   const vpx_codec_err_t res =
   vpx_codec_encode(codec, img, frame_index, 1, flags, VPX_DL_GOOD_QUALITY);
   if (res != VPX_CODEC_OK) die_codec(codec, "Failed to encode frame");
-  pkt = vpx_codec_get_cx_data(codec, &iter);
-  while (pkt != NULL) {
+  while ((pkt = vpx_codec_get_cx_data(codec, &iter)) != NULL) {
     got_pkts = 1;
     
     if (pkt->kind == VPX_CODEC_CX_FRAME_PKT) {
       const int keyframe = (pkt->data.frame.flags & VPX_FRAME_IS_KEY) != 0;
+      vpx_video_writer_write_frame(writer, (const unsigned char *)pkt->data.frame.buf,
+                                   pkt->data.frame.sz,
+                                   pkt->data.frame.pts);
       printf(keyframe ? "K" : ".");
       fflush(stdout);
     }
@@ -103,7 +105,7 @@ int main(int argc, char* argv[])
   cfg.g_timebase.den = info.time_base.denominator;
   cfg.g_lag_in_frames = 0;
   
-  //writer = vpx_video_writer_open(argv[4], kContainerIVF, &info);
+  writer = vpx_video_writer_open("vpxencodedFile", kContainerIVF, &info);
   //if (!writer) die("Failed to open %s for writing.", argv[4]);
   
   //if (!(infile = fopen(argv[3], "rb")))
