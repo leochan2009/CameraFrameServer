@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
   reader = vpx_video_reader_open("vpxencodedFile");
   if (!reader) die("Failed to open %s for reading.", argv[1]);
   
-  if (!(outfile = fopen("vpxdecodedImage", "wb")))
+  if (!(outfile = fopen("vpxdecodedImage.yuv", "wb")))
     die("Failed to open %s for writing.", argv[2]);
   
   info = vpx_video_reader_get_info(reader);

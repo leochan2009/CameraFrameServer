@@ -89,7 +89,7 @@ int main(int argc, char* argv[])
     die("Invalid frame size: %dx%d", info.frame_width, info.frame_height);
   }*/
   
-  if (!vpx_img_alloc(&raw, VPX_IMG_FMT_I420, info.frame_width,
+  if (!vpx_img_alloc(&raw, VPX_IMG_FMT_I42016, info.frame_width,
                      info.frame_height, 1)) {
     std::cerr<<"Failed to allocate image.";
   }
@@ -98,7 +98,9 @@ int main(int argc, char* argv[])
   
   res = vpx_codec_enc_config_default(encoder->codec_interface(), &cfg, 0);
   if (res) die_codec(&codec, "Failed to get default codec config.");
-  
+  cfg.g_input_bit_depth = VPX_BITS_12;
+  cfg.g_bit_depth = VPX_BITS_12;
+  cfg.g_profile = 2;
   cfg.g_w = info.frame_width;
   cfg.g_h = info.frame_height;
   cfg.g_timebase.num = info.time_base.numerator;
@@ -111,13 +113,14 @@ int main(int argc, char* argv[])
   //if (!(infile = fopen(argv[3], "rb")))
     //die("Failed to open %s for reading.", argv[3]);
   
-  if (vpx_codec_enc_init(&codec, encoder->codec_interface(), &cfg, 0))
+  if (vpx_codec_enc_init(&codec, encoder->codec_interface(), &cfg, VPX_CODEC_USE_HIGHBITDEPTH))
     std::cerr<<"Failed to initialize encoder.";//die_codec(&codec, "Failed to initialize encoder");
   
   if (vpx_codec_control_(&codec, VP9E_SET_LOSSLESS, 1))
     std::cerr<<"Failed to use lossless mode";//die_codec(&codec, "Failed to use lossless mode");
   
   int iFrameIdx = 0;
+  uint8_t zero = 0;
   while(1)
   {
     cap >> frame;
@@ -130,9 +133,18 @@ int main(int argc, char* argv[])
       cv::imshow("", frame);
       cv::waitKey(10);
       cv::cvtColor(frame, yuvImg, CV_BGR2YUV_I420);
-      memcpy(raw.planes[0],yuvImg.data, info.frame_width*info.frame_height);
-      memcpy(raw.planes[1],yuvImg.data+info.frame_width*info.frame_height, info.frame_width*info.frame_height/4);
-      memcpy(raw.planes[2],yuvImg.data+info.frame_width*info.frame_height/4*5, info.frame_width*info.frame_height/4);
+      for(int i = 0; i<info.frame_width*info.frame_height;i++)
+      {
+        memcpy(raw.planes[0]+2*i,yuvImg.data+i, 1);
+        memcpy(raw.planes[0]+2*i+1, &zero, 1);
+      }
+      for(int i = 0; i<info.frame_width*info.frame_height/4;i++)
+      {
+        memcpy(raw.planes[1]+2*i,yuvImg.data+info.frame_width*info.frame_height+i, 1);
+        memcpy(raw.planes[1]+2*i+1, &zero, 1);
+        memcpy(raw.planes[2]+i,yuvImg.data+info.frame_width*info.frame_height/4*5+i, 1);
+        memcpy(raw.planes[2]+2*i+1, &zero, 1);
+      }
       encode_frame(&codec, &raw, iFrameIdx, 0, writer);
       
       iFrameIdx++;
