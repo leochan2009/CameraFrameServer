@@ -19,7 +19,7 @@ int main(int argc, char* argv[])
   {
     // If not correct, print usage
     std::cerr << "Usage: " << argv[0] << " <port>"    << std::endl;
-    std::cerr << "    <port>     : Port # (18944 in Slicer default)"   << std::endl;
+    std::cerr << "Configuration file : in the source code folder, with name ServerConfig.cfg"   << std::endl;
     exit(0);
   }
   cv::VideoCapture cap;
